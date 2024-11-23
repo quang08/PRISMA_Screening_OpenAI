@@ -1,8 +1,8 @@
 import os 
 
 # File paths
-RAW_DATA_PATH = '/data/raw/ToBeScreened.xml'
-PROCESSED_DATA_PATH = '/data/processed/output.csv'
+RAW_DATA_PATH = 'data/raw/ToBeScreened.xml' 
+PROCESSED_DATA_PATH = 'data/processed/output.csv'
 
 # Research Questions Groups
 GROUPS = [

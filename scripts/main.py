@@ -1,3 +1,8 @@
+import sys
+import os
+# Add the project root directory to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scripts.parse_xml import parse_xml_to_dataframe
 from scripts.classify import classify_in_batches
 from scripts.export_csv import export_to_csv
