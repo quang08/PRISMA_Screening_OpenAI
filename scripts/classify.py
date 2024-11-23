@@ -1,38 +1,51 @@
-from config.settings import GROUPS
+from config.settings import GROUPS, OPEN_API_KEY
 import pandas as pd
+import openai
 from tqdm import tqdm
+import time
+import logging
 
-def classify(data):
-    def classify_row(row):
-        if not isinstance(row['Abstract'], str):
-            return "Excluded Studies for Screening Phase"
-        
-        abstract = row['Abstract'].lower()
-        
-        # Create a scoring system for better classification
-        scores = {group: 0 for group in GROUPS}
-        
-        # Challenges and Solutions
-        if any(word in abstract for word in ["challenge", "solution", "problem", "resolve"]):
-            scores["Challenges and Proposed Solutions"] += 1
-        
-        # Accuracy
-        if any(word in abstract for word in ["accuracy", "precision", "performance", "error rate"]):
-            scores["Factors Influencing Prediction Accuracy"] += 1
-        
-        # Get the group with highest score
-        max_score = max(scores.values())
-        if max_score == 0:
-            return "Excluded Studies for Screening Phase"
-        
-        return max(scores.items(), key=lambda x: x[1])[0]
+openai.api_key = OPEN_API_KEY
+
+def classify_row(row):
+    if not isinstance(row['Abstract'], str) or not row['Abstract'].strip():
+        return "Excluded Studies for Screening Phase"
+
+    prompt = f"""
+    You are a research assistant. Classify the following study abstract into one of these categories:
+    - Challenges and Proposed Solutions
+    - Factors Influencing Prediction Accuracy
+    - Impact on Teaching
+    - Performance of Prediction Methods
+    - Student's Score Prediction Methods
+    If the abstract does not fit any of these categories, classify it as "Excluded Studies for Screening Phase".
     
-    tqdm.pandas()
-    data["Group"] = data.progress_apply(classify_row, axis=1)
+    Abstract: {row['Abstract']}
+    
+    Your response should only be the category name.
+    """
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo", 
+            messages=[
+                {"role": "system", "content": "You are a research assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=50,
+            temperature=0,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Error during classification: {e}")
+        return "Excluded Studies for Screening Phase"
 
-    return data
-
-# if __name__ == '__main__':
-#     df = pd.read_csv('data/processed/intermediate_data.csv') #?
-#     classified_data = classify(df)
-#     print(classified_data['Group'].value_counts())
+def classify_in_batches(df, batch_size=5):
+    logging.info(f"Starting classification of {len(df)} records in batches of {batch_size}")
+    results = []
+    for i in tqdm(range(0, len(df), batch_size)):
+        batch = df.iloc[i:i+batch_size]
+        batch_results = batch.apply(classify_row, axis=1)
+        results.extend(batch_results)
+        time.sleep(1) # Delay
+    df["Group"] = results
+    return df

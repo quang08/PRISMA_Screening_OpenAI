@@ -1,5 +1,5 @@
-from scripts.parse_xml import parse_xml_to_df
-from scripts.classify import classify
+from scripts.parse_xml import parse_xml_to_dataframe
+from scripts.classify import classify_in_batches
 from scripts.export_csv import export_to_csv
 from config.settings import RAW_DATA_PATH, PROCESSED_DATA_PATH
 import logging
@@ -14,10 +14,10 @@ def run_pipeline():
     
     try:
         logging.info("Parsing XML...")
-        df = parse_xml_to_df(RAW_DATA_PATH)
+        df = parse_xml_to_dataframe(RAW_DATA_PATH)
         
         logging.info("Classifying data...")
-        classified_data = classify(df)
+        classified_data = classify_in_batches(df)
         
         logging.info("Exporting to CSV...")
         export_to_csv(classified_data, PROCESSED_DATA_PATH)
