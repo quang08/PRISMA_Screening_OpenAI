@@ -2,23 +2,31 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 from config.settings import RAW_DATA_PATH
 
-def parse_xml_to_df(xml_file):
-    tree = ET.parse(xml_file)
-    root = tree.getroot()
-
-    records = []
-
-    for record in root.findall("record"): 
-        title = record.find('title') if record.title is not None else "No Title"
-        abstract = record.find('abstract') if record.abstract is not None else "No Abstract"
-        metadata = record.find('metadata') if record.metadata is not None else "No Metadata"
-
-        records.append({
-            "Title": title,
-            "Abstract": abstract,
-            "Metadata": metadata
-        })
+def parse_xml_to_dataframe(xml_file):
+    try:
+        tree = ET.parse(xml_file)
+        root = tree.getroot()
+        
+        records = []
+        for record in root.findall("record"):
+            title = record.find('title')
+            abstract = record.find('abstract')
+            metadata = record.find('metadata')
+            
+            records.append({
+                "Title": title.text if title is not None else "No Title",
+                "Abstract": abstract.text if abstract is not None else "No Abstract",
+                "Metadata": metadata.text if metadata is not None else "No Metadata"
+            })
+        
+        return pd.DataFrame(records)
+    except FileNotFoundError:
+        print(f"Error: File {xml_file} not found")
+        raise
+    except ET.ParseError:
+        print(f"Error: Unable to parse XML file {xml_file}")
+        raise
 
 if __name__ == "__main__":
-    df = parse_xml_to_df(RAW_DATA_PATH)
+    df = parse_xml_to_dataframe(RAW_DATA_PATH)
     print(df.head())
