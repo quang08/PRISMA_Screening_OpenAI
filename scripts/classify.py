@@ -9,28 +9,41 @@ api_key = os.getenv("OPENAI_API_KEY", "").strip()
 
 client = OpenAI(api_key=api_key)
 
-def normalize_group_names(group_name):
-    """Normalize group names by removing leading dashes and extra spaces."""
+VALID_CATEGORIES = [
+    "Challenges and Proposed Solutions",
+    "Factors Influencing Prediction Accuracy",
+    "Impact on Teaching",
+    "Performance of Prediction Methods",
+    "Student's Score Prediction Methods",
+    "Excluded Studies for Screening Phase"
+]
+
+def normalize_and_validate_group(group_name):
     group_name = group_name.strip()
-    # Remove leading dash if it exists
     if group_name.startswith("-"):
         group_name = group_name[1:].strip()
-    return group_name
+
+    for valid_category in VALID_CATEGORIES:
+        if group_name.lower() == valid_category.lower():
+            return valid_category 
+
+    return "Excluded Studies for Screening Phase"
 
 def classify_batch(batch, max_retries=5):
     abstracts = batch["Abstract"].tolist()
     prompt = f"""
-    Classify the following {len(batch)} abstracts into these categories:
-    Challenges and Proposed Solutions
-    Factors Influencing Prediction Accuracy
-    Impact on Teaching
-    Performance of Prediction Methods
-    Student's Score Prediction Methods
-    Excluded Studies for Screening Phase
+    Classify the following {len(batch)} abstracts into one of these **exact** categories:
+    - Challenges and Proposed Solutions
+    - Factors Influencing Prediction Accuracy
+    - Impact on Teaching
+    - Performance of Prediction Methods
+    - Student's Score Prediction Methods
+    - Excluded Studies for Screening Phase
 
     If none of these categories fit, classify as "Excluded Studies for Screening Phase".
 
     Provide exactly one classification per abstract, in the same order as the abstracts, separated by newlines.
+    Do not create new categories or modify the given ones.
 
     Abstracts:
     """
@@ -43,15 +56,14 @@ def classify_batch(batch, max_retries=5):
         try:
             response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
             )
 
-            # Log full response for debugging
             logging.info(f"Full response: {response}")
 
             # Extract and clean results
             results = response.choices[0].message.content.strip().split("\n")
-            results = [normalize_group_names(result) for result in results if result.strip()]
+            results = [normalize_and_validate_group(result) for result in results if result.strip()]
 
             # Handle mismatched results
             if len(results) != len(batch):
@@ -65,24 +77,18 @@ def classify_batch(batch, max_retries=5):
             logging.error(f"Error during batch classification: {e}. Retrying in {backoff} seconds...")
             retries += 1
             time.sleep(backoff)
-            backoff *= 2  # Exponential backoff
+            backoff *= 2 
 
-    # Return default classification if retries fail
     return ["Excluded Studies for Screening Phase"] * len(batch)
 
 
 def classify_in_batches(df, batch_size=20, output_file="data/processed/output.csv"):
-    """Classify records in batches and save progress to an output file."""
-    
-    # Add an ID column if not already present
     if "ID" not in df.columns:
         df["ID"] = range(1, len(df) + 1)
 
-    # Ensure the output directory exists
     output_dir = os.path.dirname(output_file)
     os.makedirs(output_dir, exist_ok=True)
 
-    # Check if output file exists to load progress
     if os.path.exists(output_file):
         logging.info(f"Loading existing output file: {output_file}")
         processed_df = pd.read_csv(output_file)
@@ -92,13 +98,11 @@ def classify_in_batches(df, batch_size=20, output_file="data/processed/output.cs
         processed_df = pd.DataFrame(columns=df.columns.tolist() + ["Group"])
         processed_ids = set()
 
-    # Start classification in batches
     logging.info(f"Starting classification of {len(df)} records in batches of {batch_size}")
 
     for i in tqdm(range(0, len(df), batch_size)):
         batch = df.iloc[i : i + batch_size]
 
-        # Skip already processed records
         batch = batch[~batch["ID"].isin(processed_ids)]
         if batch.empty:
             continue
@@ -109,18 +113,13 @@ def classify_in_batches(df, batch_size=20, output_file="data/processed/output.cs
         batch_results = classify_batch(batch)
         batch.loc[:, "Group"] = batch_results
 
-        # Log the classified batch
         logging.info(f"Batch {i // batch_size + 1} DataFrame after classification:")
         logging.info("\n" + batch.to_string())
 
-        # Append the classified batch to the processed DataFrame
         processed_df = pd.concat([processed_df, batch], ignore_index=True)
 
-        # Save the updated processed DataFrame
         processed_df.to_csv(output_file, index=False)
         logging.info(f"Batch {i // batch_size + 1} results successfully exported to {output_file}")
-
-        # Log success of the batch
         logging.info(f"Batch {i // batch_size + 1} completed successfully.")
 
     return processed_df
